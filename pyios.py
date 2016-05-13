@@ -7,7 +7,7 @@ default_netmask = "24"
 default_username = "josef"
 default_password = "cisco"
 default_domain = "example.com"
-
+default_hostname = "NAME_NOT_SET"
 
 class config:
     hostname = None
@@ -21,7 +21,7 @@ class device:
     hostname = None
     idnr = None
     def __init__(self, id):
-        self.hostname = "NAME_NOT_SET"
+        self.hostname = default_hostname
         self.idnr = id
 
 
@@ -113,14 +113,29 @@ def macro_interface(s, interface, ipaddr, mask=default_netmask):
     s.send("no shutdown" + "\r\n")
     macro_save(s)
 
-def macro_setup(s):
+def macro_setup(dev):
+    s = dev.socket
+    if dev.hostname == default_hostname:
+        dev.hostname = "R" + str(dev.idnr)
+
     s.send("conf t" + "\r\n")
     s.send("no ip domain-lookup" + "\r\n")
     s.send("service password-encryption" + "\r\n")
     s.send("enable secret " + default_password + "\r\n")
     s.send("username " + default_username + " privilege 15 secret " + default_password + "\r\n")
+    s.send("hostname " + dev.hostname + "\r\n")
     macro_save(s)
 
+def macro_setup_all(dev_list):
+    for dev in dev_list:
+        macro_setup(dev)
+
+def macro_list_devices(devices):
+    for dev in devices:
+        if dev == active_dev:
+            print str(dev.idnr) + ": " + dev.hostname + " (active)"
+        else:
+            print str(dev.idnr) + ": " + dev.hostname
 
 #main function
 if __name__ == "__main__":
@@ -135,7 +150,8 @@ if __name__ == "__main__":
 
     if len(dev) > 0:
         print "Found " + str(len(dev)) + " running devices.."
-        s = dev[0].socket
+        active_dev = dev[0]
+        s = active_dev.socket
     else:
         print "No devices found"
         sys.exit()
@@ -149,6 +165,16 @@ if __name__ == "__main__":
             if splitline[0] == "kill":
                 print "exiting..."
                 sys.exit()
+
+            if splitline[0] == "select":
+                key = splitline[1]
+                for d in dev:
+                    if key == str(d.idnr) or key == d.hostname:
+                        active_dev = d
+                        s = active_dev.socket
+                #else:
+                #    print "no such device. (key='" + key + "')"
+
 
             # Macro
             elif splitline[0] == 'macro':
@@ -166,14 +192,20 @@ if __name__ == "__main__":
 
                 # setup some default settings for device
                 elif splitline[1] == 'setup':
-                    macro_setup(s)
+                    macro_setup(active_dev)
+
+                elif splitline[1] == 'setup-all':
+                    macro_setup_all(dev)
 
                 # Save running configuration to startup configuration
                 elif splitline[1] == 'save':
                     macro_save(s)
 
                 elif splitline[1] == 'hostname':
-                    print "Hostname: " + conf.hostname + "\n"
+                    print "Hostname: " + dev.hostname + "\n"
+                
+                elif splitline[1] == 'devices':
+                    macro_list_devices(dev)
 
                 # specific macro not found
                 else:
@@ -187,6 +219,9 @@ if __name__ == "__main__":
         else:
             s.send(line + "\r\n")
             
+
+
+
 
 
 
